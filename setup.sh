@@ -32,9 +32,11 @@ if ! command -v "$PYTHON" >/dev/null 2>&1; then
 fi
 
 if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
-    echo "⚠️   ffmpeg / ffprobe not found in PATH."
+    echo "❌  ffmpeg / ffprobe not found in PATH. Install first:"
     echo "    macOS:  brew install ffmpeg"
     echo "    Linux:  sudo apt install ffmpeg   (or your distro equivalent)"
+    echo "    Windows: https://www.gyan.dev/ffmpeg/builds/"
+    exit 1
 fi
 
 # 1. venv

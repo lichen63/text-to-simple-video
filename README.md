@@ -33,7 +33,16 @@ t2sv sample.txt --voice yunxi --resolution 1080p,vertical-1080
   - 例：`video/2026-06-08T06-46_sample/yunxi_720p.mp4`
   - 多分辨率：`yunxi_720p.mp4`、`yunxi_vertical-1080.mp4`、...
 - `t2sv` 在任何目录都能跑。
-- 完整参数：`t2sv --help`。
+- 完整参数：`t2sv --help`；版本：`t2sv --version`。
+
+## 测试
+
+```bash
+pip install -e ".[dev]"
+pytest                       # 跑 tests/ 下的单元测试（~0.1s）
+```
+
+详见 [tests/README.md](tests/README.md)。
 
 ## 语音（21 个预设）
 
@@ -77,7 +86,10 @@ t2sv sample.txt --resolution all         # 一次出 8 个
 
 启动时扫描两类来源：
 
-1. **macOS 系统字体**：Hiragino W3/W6、STHeiti Light/Medium、Songti Light/Regular/Bold/Black
+1. **系统字体**（按平台过滤，存在才显示）：
+   - macOS: Hiragino W3/W6、STHeiti Light/Medium、Songti Light/Regular/Bold/Black
+   - Linux: Noto Sans/Serif CJK SC、文泉驿微米黑/正黑
+   - Windows: 微软雅黑、黑体、宋体
 2. **`fonts/` 目录下任意 `.ttf/.ttc/.otf`**（`fonts/download_fonts.py` 会拉霞鹜文楷、思源黑体、思源宋体）
 
 默认选项由 `text_to_video.py` 顶部的 `DEFAULT_FONT_KEYS` 决定（按顺序找第一个存在的）。改默认调整这个列表即可。

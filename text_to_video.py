@@ -27,6 +27,15 @@ from typing import List, Optional, Tuple
 import edge_tts
 from PIL import Image, ImageDraw, ImageFont
 
+try:
+    from importlib.metadata import PackageNotFoundError, version as _pkg_version
+    try:
+        __version__ = _pkg_version("text-to-simple-video")
+    except PackageNotFoundError:
+        __version__ = "0.0.0+source"
+except Exception:
+    __version__ = "0.0.0+source"
+
 
 REPO_ROOT = Path(__file__).resolve().parent
 TEXT_DIR = REPO_ROOT / "text"
@@ -87,20 +96,34 @@ DEFAULT_RESOLUTION_KEY = "720p"
 DEFAULT_FONT_KEYS = [
     "bundled-sourcehansanscn-regular",  # cross-platform, modern (preferred)
     "bundled-lxgwwenkai-regular",       # cross-platform kaiti
-    "hiragino-w6",                       # macOS fallback, sharp + bold
+    "hiragino-w6",                      # macOS fallback (粗、锐利)
+    "noto-sc-regular",                  # Linux fallback
+    "msyh",                             # Windows fallback
     "heiti-medium",
 ]
 
-# Built-in macOS system fonts (cannot be redistributed; only used if present).
+# Built-in system fonts (cannot be redistributed; only used if present).
+# Linux Noto CJK indices: 0=JP, 1=KR, 2=SC, 3=TC, 4=HK.
 SYSTEM_FONT_PRESETS = [
-    ("hiragino-w6",   "Hiragino W6 (粗黑体)",  "/System/Library/Fonts/Hiragino Sans GB.ttc", 2),
-    ("hiragino-w3",   "Hiragino W3 (常规黑)",   "/System/Library/Fonts/Hiragino Sans GB.ttc", 0),
-    ("heiti-medium",  "STHeiti Medium",          "/System/Library/Fonts/STHeiti Medium.ttc",   1),
-    ("heiti-light",   "STHeiti Light",           "/System/Library/Fonts/STHeiti Light.ttc",    1),
-    ("songti-black",  "Songti Black (海报粗宋)",  "/System/Library/Fonts/Supplemental/Songti.ttc", 0),
-    ("songti-bold",   "Songti Bold",             "/System/Library/Fonts/Supplemental/Songti.ttc", 1),
-    ("songti-light",  "Songti Light",            "/System/Library/Fonts/Supplemental/Songti.ttc", 3),
-    ("songti-regular", "Songti Regular",         "/System/Library/Fonts/Supplemental/Songti.ttc", 6),
+    # macOS
+    ("hiragino-w6",    "Hiragino W6 (粗黑体)",      "/System/Library/Fonts/Hiragino Sans GB.ttc", 2),
+    ("hiragino-w3",    "Hiragino W3 (常规黑)",       "/System/Library/Fonts/Hiragino Sans GB.ttc", 0),
+    ("heiti-medium",   "STHeiti Medium",              "/System/Library/Fonts/STHeiti Medium.ttc",   1),
+    ("heiti-light",    "STHeiti Light",               "/System/Library/Fonts/STHeiti Light.ttc",    1),
+    ("songti-black",   "Songti Black (海报粗宋)",      "/System/Library/Fonts/Supplemental/Songti.ttc", 0),
+    ("songti-bold",    "Songti Bold",                 "/System/Library/Fonts/Supplemental/Songti.ttc", 1),
+    ("songti-light",   "Songti Light",                "/System/Library/Fonts/Supplemental/Songti.ttc", 3),
+    ("songti-regular", "Songti Regular",              "/System/Library/Fonts/Supplemental/Songti.ttc", 6),
+    # Linux (Debian/Ubuntu typical paths)
+    ("noto-sc-regular", "Noto Sans CJK SC Regular",   "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", 2),
+    ("noto-sc-bold",    "Noto Sans CJK SC Bold",      "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",    2),
+    ("noto-serif-sc",   "Noto Serif CJK SC",          "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc", 2),
+    ("wqy-microhei",    "文泉驿微米黑 WenQuanYi",      "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc", 0),
+    ("wqy-zenhei",      "文泉驿正黑 WenQuanYi",        "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",   0),
+    # Windows
+    ("msyh",           "微软雅黑 Microsoft YaHei",    "C:/Windows/Fonts/msyh.ttc",   0),
+    ("simhei",         "黑体 SimHei",                 "C:/Windows/Fonts/simhei.ttf", 0),
+    ("simsun",         "宋体 SimSun",                 "C:/Windows/Fonts/simsun.ttc", 0),
 ]
 
 # Friendly names for known open-source font filenames in fonts/.
@@ -128,7 +151,7 @@ class FontChoice:
 SENTENCE_END_RE = re.compile(
     r"("
     r"[。！？；…]+"               # Chinese end punctuation
-    r"|[!?;]+(?=\s|$)"            # English ! ? ; before whitespace/end
+    r"|[!?]+(?=\s|$)"             # English ! ? before whitespace/end
     r"|\.+(?=\s+[A-Z\u3400-\u9fff]|\s*$)"      # English . before \s+(CapLetter|CJK) or end
     r"|\n{2,}"                    # paragraph break
     r")"
@@ -185,13 +208,27 @@ async def _tts_save(text: str, voice: str, rate: str, volume: str, out_path: Pat
     await communicate.save(str(out_path))
 
 
-def synthesize(text: str, voice: str, rate: str, volume: str, out_path: Path) -> float:
-    try:
-        asyncio.run(_tts_save(text, voice, rate, volume, out_path))
-    except ValueError as e:
-        raise SystemExit(f"edge-tts 拒绝请求：{e}  "
-                         f"用 `t2sv --list-voices` 查可用语音；rate/volume 形如 +0% / -10%。") from e
-    return probe_duration(out_path)
+def synthesize(text: str, voice: str, rate: str, volume: str, out_path: Path,
+               retries: int = 2) -> float:
+    """Call edge-tts with limited retries on transient errors."""
+    last_err: Optional[Exception] = None
+    for attempt in range(retries + 1):
+        try:
+            asyncio.run(_tts_save(text, voice, rate, volume, out_path))
+            return probe_duration(out_path)
+        except ValueError as e:
+            # bad voice / bad rate — not transient, give up immediately
+            raise SystemExit(f"edge-tts 拒绝请求：{e}  "
+                             f"用 `t2sv --list-voices` 查可用语音；"
+                             f"rate/volume 形如 +0% / -10%。") from e
+        except Exception as e:
+            last_err = e
+            if attempt < retries:
+                wait = 2 ** attempt
+                print(f"    ⚠️  TTS 失败 ({type(e).__name__}: {e})，{wait}s 后重试 "
+                      f"({attempt + 1}/{retries})")
+                time.sleep(wait)
+    raise SystemExit(f"edge-tts 重试 {retries} 次后仍失败：{last_err}")
 
 
 def probe_duration(path: Path) -> float:
@@ -664,6 +701,7 @@ def build_videos(text: str,
 
     tmp_root = Path(tempfile.mkdtemp(prefix="t2sv_"))
     print(f"[+] 临时目录: {tmp_root}")
+    started = time.time()
     try:
         # Phase 1: TTS once, shared across all output resolutions.
         print(f"\n[1/2] 合成语音 ({len(sentences)} 句)")
@@ -694,8 +732,11 @@ def build_videos(text: str,
             print(f"    ✓ {out_path}")
         return outputs
     finally:
+        elapsed = time.time() - started
+        m, s = divmod(elapsed, 60)
+        print(f"\n[+] 用时 {int(m)}m{s:.1f}s")
         if keep_temp:
-            print(f"\n[+] 已保留临时文件: {tmp_root}")
+            print(f"[+] 已保留临时文件: {tmp_root}")
         else:
             shutil.rmtree(tmp_root, ignore_errors=True)
 
@@ -707,6 +748,8 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         description="把一段中文文本生成黑底白字、edge-tts 朗读的简单视频。",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    p.add_argument("--version", action="version",
+                   version=f"%(prog)s {__version__}")
     src = p.add_mutually_exclusive_group()
     src.add_argument("input", nargs="?", type=Path,
                      help="文本文件路径（裸文件名会先去 text/ 找）。")
