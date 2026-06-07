@@ -1,0 +1,57 @@
+# ── Python ──
+__pycache__/
+*.pyc
+*.pyo
+*.so
+*.egg
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# ── Virtualenv ──
+.venv/
+venv/
+
+# ── Test / lint caches ──
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ── Editors / IDE ──
+.vscode/
+.idea/
+*.swp
+*~
+
+# ── OS noise ──
+.DS_Store
+**/.DS_Store
+Thumbs.db
+
+# ── This project: generated / downloaded artifacts ──
+
+# Output videos: keep the folder, ignore everything in it.
+video/*
+!video/.gitkeep
+
+# Downloaded fonts (re-fetch via `python fonts/download_fonts.py`).
+fonts/*.ttf
+fonts/*.ttc
+fonts/*.otf
+fonts/*.zip
+fonts/*.tar.gz
+fonts/_tmp/
+
+# User-supplied input texts: only sample.txt is shipped.
+text/*
+!text/.gitkeep
+!text/sample.txt
+
+# Font preview samples are regenerable; ignore the actual PNGs.
+examples/font-samples/*.png
+
+# Per-run intermediates
+*.tmp.mp4

@@ -1,0 +1,3 @@
+# Canonical source is pyproject.toml; this file installs the package in editable mode
+# so existing `pip install -r requirements.txt` workflows still work.
+-e .

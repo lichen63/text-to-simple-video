@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "text-to-simple-video"
+version = "0.1.0"
+description = "Turn Chinese text into a black-background narrated video with edge-tts."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+authors = [{ name = "lichen63" }]
+dependencies = [
+    "edge-tts>=6.1.10",
+    "Pillow>=10.0.0",
+]
+
+[project.scripts]
+t2sv = "text_to_video:main"
+
+[tool.setuptools]
+py-modules = ["text_to_video"]
