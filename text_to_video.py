@@ -55,6 +55,16 @@ VOICE_PRESETS = {
     "hsiaochen": ("zh-TW-HsiaoChenNeural",         "台湾国语·女·友好"),
     "hsiaoyu":   ("zh-TW-HsiaoYuNeural",           "台湾国语·女·亲和"),
     "yunjhe":    ("zh-TW-YunJheNeural",            "台湾国语·男·友好"),
+    # 多语言（中英混杂首选）
+    "ava-ml":    ("en-US-AvaMultilingualNeural",     "多语言·女·亲切·中英混杂流畅"),
+    "andrew-ml": ("en-US-AndrewMultilingualNeural",  "多语言·男·稳健·中英混杂流畅"),
+    # 英文·美式
+    "aria":      ("en-US-AriaNeural",              "英文·美式·女·自然"),
+    "guy":       ("en-US-GuyNeural",               "英文·美式·男·热情"),
+    "jenny":     ("en-US-JennyNeural",             "英文·美式·女·友好"),
+    # 英文·英式
+    "sonia":     ("en-GB-SoniaNeural",             "英文·英式·女"),
+    "ryan":      ("en-GB-RyanNeural",              "英文·英式·男"),
 }
 DEFAULT_VOICE_KEY = "xiaoxiao"
 
@@ -112,7 +122,17 @@ class FontChoice:
 
 
 # Sentence-ending punctuation. Comma-like marks stay in-sentence for natural TTS pauses.
-SENTENCE_END_RE = re.compile(r"([。！？；…!?;]+|\n{2,})")
+# Sentence-ending punctuation. Chinese marks always split; English `.` only
+# splits when followed by whitespace + capital letter (or end of text), to
+# avoid breaking common abbreviations like "U.S." or numbers like "3.14".
+SENTENCE_END_RE = re.compile(
+    r"("
+    r"[。！？；…]+"               # Chinese end punctuation
+    r"|[!?;]+(?=\s|$)"            # English ! ? ; before whitespace/end
+    r"|\.+(?=\s+[A-Z\u3400-\u9fff]|\s*$)"      # English . before \s+(CapLetter|CJK) or end
+    r"|\n{2,}"                    # paragraph break
+    r")"
+)
 SOFT_BREAK_RE = re.compile(r"[，,、]")
 
 
@@ -190,22 +210,94 @@ def _load_font(path: str, size: int, index: int) -> ImageFont.FreeTypeFont:
     return ImageFont.truetype(path, size=size, index=index)
 
 
-def _wrap_cjk(text: str, font: ImageFont.FreeTypeFont, max_width: int) -> List[str]:
+def _is_cjk(ch: str) -> bool:
+    cp = ord(ch)
+    return (
+        0x3000 <= cp <= 0x303F     # CJK Symbols & Punctuation
+        or 0x3400 <= cp <= 0x4DBF  # CJK Ext-A
+        or 0x4E00 <= cp <= 0x9FFF  # CJK Unified Ideographs
+        or 0xF900 <= cp <= 0xFAFF  # CJK Compatibility Ideographs
+        or 0xFF00 <= cp <= 0xFFEF  # Halfwidth/Fullwidth Forms
+    )
+
+
+def _tokenize(text: str) -> List[Tuple[str, str]]:
+    """Tokenise text into wrap units: CJK chars are individual, Latin words are atomic."""
+    tokens: List[Tuple[str, str]] = []
+    i, n = 0, len(text)
+    while i < n:
+        ch = text[i]
+        if ch == "\n":
+            tokens.append(("NL", "\n"))
+            i += 1
+        elif ch.isspace():
+            j = i
+            while j < n and text[j].isspace() and text[j] != "\n":
+                j += 1
+            tokens.append(("SP", " "))
+            i = j
+        elif _is_cjk(ch):
+            tokens.append(("CJK", ch))
+            i += 1
+        else:
+            j = i
+            while j < n and not text[j].isspace() and not _is_cjk(text[j]):
+                j += 1
+            tokens.append(("WORD", text[i:j]))
+            i = j
+    return tokens
+
+
+def _hard_break(word: str, font: ImageFont.FreeTypeFont, max_width: int) -> Tuple[List[str], str]:
+    """Char-by-char break of an over-long token; returns (full_lines, trailing_partial)."""
     lines: List[str] = []
     current = ""
-    for ch in text:
-        if ch == "\n":
-            lines.append(current)
-            current = ""
-            continue
+    for ch in word:
         trial = current + ch
-        if font.getlength(trial) > max_width and current:
+        if current and font.getlength(trial) > max_width:
             lines.append(current)
             current = ch
         else:
             current = trial
+    return lines, current
+
+
+def _wrap_mixed(text: str, font: ImageFont.FreeTypeFont, max_width: int) -> List[str]:
+    """Word-aware wrap for Latin runs, character-wise wrap for CJK."""
+    lines: List[str] = []
+    current = ""
+    for kind, val in _tokenize(text):
+        if kind == "NL":
+            lines.append(current.rstrip())
+            current = ""
+        elif kind == "SP":
+            if not current:
+                continue  # drop leading space on a fresh line
+            trial = current + val
+            if font.getlength(trial) > max_width:
+                lines.append(current.rstrip())
+                current = ""
+            else:
+                current = trial
+        elif kind == "CJK":
+            trial = current + val
+            if current and font.getlength(trial) > max_width:
+                lines.append(current.rstrip())
+                current = val
+            else:
+                current = trial
+        else:  # WORD
+            trial = current + val
+            if current and font.getlength(trial) > max_width:
+                lines.append(current.rstrip())
+                current = val
+            else:
+                current = trial
+            if font.getlength(current) > max_width:
+                broken, current = _hard_break(current, font, max_width)
+                lines.extend(broken)
     if current:
-        lines.append(current)
+        lines.append(current.rstrip())
     return lines
 
 
@@ -227,7 +319,7 @@ def render_text_image(
     size = base_size
     while True:
         f = _load_font(font.path, size, font.index)
-        lines = _wrap_cjk(text, f, usable_w)
+        lines = _wrap_mixed(text, f, usable_w)
         ascent, descent = f.getmetrics()
         line_h = ascent + descent
         line_spacing = int(line_h * 0.35)
@@ -488,8 +580,8 @@ def voice_short_label(voice_full_or_key: str) -> str:
     for key, (full, _) in VOICE_PRESETS.items():
         if full == voice_full_or_key:
             return key
-    s = re.sub(r"^zh-[A-Za-z]{2}-(?:[a-z]+-)?", "", voice_full_or_key)
-    s = re.sub(r"Neural$", "", s)
+    s = re.sub(r"^[a-z]{2}-[A-Za-z]{2,}-(?:[a-z]+-)?", "", voice_full_or_key)
+    s = re.sub(r"(Multilingual)?Neural$", "", s)
     return (s or voice_full_or_key).lower()
 
 

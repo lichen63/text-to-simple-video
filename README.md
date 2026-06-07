@@ -1,6 +1,6 @@
 # text-to-simple-video
 
-把一段中文文本变成黑底白字、edge-tts 朗读的视频。每句依次出现，朗读完毕自动切下一句。
+把一段文本（中文 / 英文 / 中英混杂）变成黑底白字、edge-tts 朗读的视频。每句依次出现，朗读完毕自动切下一句。
 
 ## 安装
 
@@ -35,7 +35,7 @@ t2sv sample.txt --voice yunxi --resolution 1080p,vertical-1080
 - `t2sv` 在任何目录都能跑。
 - 完整参数：`t2sv --help`。
 
-## 语音（14 个预设）
+## 语音（21 个预设）
 
 | 区域 | key |
 |---|---|
@@ -43,10 +43,18 @@ t2sv sample.txt --voice yunxi --resolution 1080p,vertical-1080
 | 方言 | xiaobei（辽宁话）/ xiaoni（陕西话） |
 | 粤语 | hiugaai / hiumaan / wanlung |
 | 台湾国语 | hsiaochen / hsiaoyu / yunjhe |
+| **多语言（中英混杂首选）** | **ava-ml** / **andrew-ml** |
+| 英文·美式 | aria / guy / jenny |
+| 英文·英式 | sonia / ryan |
 
 `t2sv --list-voices` 看详情。`--voice` 也接受完整 edge-tts 名（如 `zh-CN-XiaomengNeural`）。
 
 > 负号开头的值要用 `=` 写法：`--rate=-10%` / `--volume=-20%`（不然 argparse 会把它当 flag）。
+
+### 中英混杂建议
+- 用 **`ava-ml`** 或 **`andrew-ml`**（微软 multilingual neural），中英切换流畅自然
+- 切句对 `.` 做了智能识别：`Mr. Smith` 会断（小代价），但 `3.14` / `U.S.` 不会破
+- 文字渲染对英文做了**词级换行**，单词不会从中间硬切
 
 ## 分辨率（8 个预设，支持多选）
 
@@ -104,6 +112,6 @@ MIT — 见 [LICENSE](LICENSE)。
 
 ## 已知限制
 
-- 切句只针对中文标点；纯英文不按 `.` 切（需要的话改源码顶部的 `SENTENCE_END_RE`）。
 - edge-tts 在线 API，需要网络。
 - 交互倒计时基于 `select(stdin)`，Windows 不支持；请用 `--no-prompt`。
+- 英文切句对 `.` 用「后接空白+大写字母/CJK」启发式判断；像 `Mr. Smith` 会被切开（无害，多一屏画面）；如需精准请改源码顶部的 `SENTENCE_END_RE` 或在 `--text` 里手动控分段。
