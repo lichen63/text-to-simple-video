@@ -2,6 +2,10 @@
 
 把一段文本（中文 / 英文 / 中英混杂）变成黑底白字、edge-tts 朗读的视频。每句依次出现，朗读完毕自动切下一句。
 
+![demo](examples/demo.gif)
+
+> ↑ 静音预览（实际输出含 edge-tts 朗读）。这段 demo 用 `--voice ava-ml` 渲染中英混杂。
+
 ## 安装
 
 需要 Python 3.9+ 和 `ffmpeg`（`brew install ffmpeg` / `apt install ffmpeg`）。
