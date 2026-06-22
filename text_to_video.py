@@ -159,6 +159,59 @@ SENTENCE_END_RE = re.compile(
 SOFT_BREAK_RE = re.compile(r"[，,、]")
 
 
+# ---------- markdown preprocessing ----------
+
+# Strip common Markdown so blog `.md` files (YAML front matter, headings,
+# emphasis, links, code, lists, tables, ...) can be fed directly. We only need
+# readable plain text for TTS + on-screen captions, so markup is removed while
+# blank lines (paragraph breaks) are kept for downstream sentence splitting.
+def strip_markdown(text: str) -> str:
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+
+    # Block-level removals (whole spans).
+    text = re.sub(r"\A---\n.*?\n---\n", "", text, flags=re.DOTALL)  # YAML front matter
+    text = re.sub(r"```.*?```", "", text, flags=re.DOTALL)         # fenced code ```
+    text = re.sub(r"~~~.*?~~~", "", text, flags=re.DOTALL)         # fenced code ~~~
+    text = re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)        # HTML comments
+
+    # Inline constructs (before line-level so markers are gone first).
+    text = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", text)               # images -> drop
+    text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)           # links  -> link text
+    text = re.sub(r"</?[A-Za-z][^>\n]*>", "", text)                # inline HTML tags
+    text = re.sub(r"\*\*([^*\n]+)\*\*", r"\1", text)               # **bold**
+    text = re.sub(r"__([^_\n]+)__", r"\1", text)                   # __bold__
+    text = re.sub(r"\*([^*\n]+)\*", r"\1", text)                   # *italic*
+    text = re.sub(r"(?<![A-Za-z0-9_])_([^_\n]+)_(?![A-Za-z0-9_])", r"\1", text)  # _italic_ (skip snake_case)
+    text = re.sub(r"~~([^~\n]+)~~", r"\1", text)                   # ~~strike~~
+    text = re.sub(r"`([^`\n]+)`", r"\1", text)                     # `inline code`
+
+    # Line-level cleanups.
+    out: List[str] = []
+    for line in text.split("\n"):
+        # Horizontal rule (---, ***, ___) or setext underline (===) -> paragraph
+        # break. ASCII only, so Chinese dashes (——) are untouched.
+        if re.fullmatch(r"\s*([-*_=])\1{2,}\s*", line):
+            out.append("")
+            continue
+        # Markdown table separator row (| --- | :--: |) -> drop.
+        if "|" in line and line.strip() and set(line) <= set(" |:-"):
+            continue
+        line = re.sub(r"^\s*>+\s?", "", line)       # blockquote
+        # ATX heading: strip leading #'s (space optional) and closed trailing #'s.
+        if re.match(r"^\s*#{1,6}", line):
+            line = re.sub(r"^\s*#{1,6}[ \t]*", "", line)
+            line = re.sub(r"[ \t]+#+[ \t]*$", "", line)
+        line = re.sub(r"^\s*[-*+]\s+", "", line)    # bullet list
+        line = re.sub(r"^\s*\d+\.\s+", "", line)    # ordered list
+        if "|" in line:                             # table cells -> spaces
+            line = re.sub(r"\s*\|\s*", "  ", line).strip()
+        out.append(line.rstrip())
+
+    text = "\n".join(out)
+    text = re.sub(r"\n{3,}", "\n\n", text)          # keep paragraph breaks only
+    return text.strip() + "\n"
+
+
 # ---------- text splitting ----------
 
 def split_sentences(text: str, max_chars: int = 80) -> List[str]:
@@ -814,6 +867,10 @@ def run(argv: Optional[List[str]] = None) -> int:
         except UnicodeDecodeError as e:
             raise SystemExit(f"读 {input_path} 失败：内容不是 UTF-8 文本。{e}")
         input_label = input_path.name
+
+    # Strip Markdown (front matter, headings, emphasis, links, lists, ...) so
+    # blog `.md` files can be fed directly without a hand-made plain-text copy.
+    text = strip_markdown(text)
 
     # --- discover fonts ---
     fonts = discover_fonts()

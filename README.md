@@ -31,6 +31,7 @@ t2sv --version  /  --help  /  --list-voices
 ```
 
 - 输入：裸文件名优先到 `text/` 找；也接受绝对路径或 `--text`。
+- **Markdown 友好**：可直接喂 `.md` 博客，自动剥离 front matter、`#` 标题、`**强调**`、`[链接]()`、图片、列表、引用、代码块、表格等，朗读与字幕只保留正文（中文破折号 `——`、`snake_case` 不会误伤）。
 - 输出：每次跑生成 `video/<项目名>/<voice>_<resolution>.mp4`；默认项目名 `<时间>_<input-stem>`，`-o foo` 自定义。
 - 任意目录都能跑。负号开头的值用 `=`：`--rate=-10%` / `--volume=-20%`。
 
